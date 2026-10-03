@@ -36,6 +36,7 @@ object CrashReporter {
 
     /** Zapisuje błąd, który złapaliśmy sami (aplikacja działa dalej). */
     fun record(context: Context, where: String, e: Throwable) {
+        android.util.Log.e("LudzikCrash", "Błąd: $where", e)
         val sw = StringWriter()
         e.printStackTrace(PrintWriter(sw))
         File(context.filesDir, FILE).writeText(header() + "Miejsce: $where\n\n$sw")
