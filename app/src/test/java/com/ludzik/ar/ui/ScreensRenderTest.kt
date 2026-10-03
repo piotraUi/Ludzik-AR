@@ -54,7 +54,7 @@ class ScreensRenderTest {
     fun overlay() = shot("overlay") {
         Box(Modifier.fillMaxSize().background(Color(0xFF6D6A62))) {
             ArOverlay(
-                state = ArUiState(hint = TrackingHint.PLACE, characterCount = 4, recording = true, recordSeconds = 7),
+                state = ArUiState(hint = TrackingHint.PLACE, characterCount = 4, recording = true, recordSeconds = 7, debugText = "śledzenie: tracking (none), OK 87% klatek\npłaszczyzny: 2 poziome, 1 pionowe, wirtualne: 0\nostatnie dotknięcie: postawiono obok kratki"),
                 selected = Kleks,
                 toast = "Zdjęcie zapisane w galerii (Obrazy/LudzikAR)",
                 flashAlpha = 0f,

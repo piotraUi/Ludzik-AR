@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,6 +88,7 @@ fun ArScreen(
             flashAlpha = flash.value,
             onBack = onBack,
             onClear = controller::clearAll,
+            onCounter = controller::toggleDebug,
             onPhoto = onPhoto,
             onRecord = onRecord,
             onSelect = {
@@ -105,6 +108,7 @@ fun ArOverlay(
     flashAlpha: Float,
     onBack: () -> Unit,
     onClear: () -> Unit,
+    onCounter: () -> Unit = {},
     onPhoto: () -> Unit,
     onRecord: () -> Unit,
     onSelect: (CharacterKind) -> Unit,
@@ -120,13 +124,25 @@ fun ArOverlay(
             ) {
                 DoodleButton("←", onBack, seed = 3)
                 Spacer(Modifier.weight(1f))
-                DoodleButton("${state.characterCount}/${World.MAX_CHARACTERS}", {}, seed = 5)
+                DoodleButton("${state.characterCount}/${World.MAX_CHARACTERS}", onCounter, seed = 5)
                 Spacer(Modifier.width(8.dp))
                 DoodleButton("Wymaż", onClear, seed = 9, enabled = state.characterCount > 0)
             }
             val hint = hintText(state.hint, selected.displayName)
             AnimatedVisibility(hint != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 StickyNote(hint ?: "", Modifier.padding(horizontal = 24.dp, vertical = 4.dp), seed = state.hint.ordinal)
+            }
+
+            state.debugText?.let {
+                Text(
+                    it,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(8.dp),
+                )
             }
 
             Spacer(Modifier.weight(1f))

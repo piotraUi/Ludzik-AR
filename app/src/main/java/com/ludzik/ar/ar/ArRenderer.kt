@@ -48,6 +48,7 @@ interface ArRendererListener {
     fun onMessage(text: String)
     fun onPhoto(pixels: ByteBuffer, width: Int, height: Int)
     fun onError(text: String)
+    fun onDebug(text: String)
 }
 
 /**
@@ -120,8 +121,17 @@ class ArRenderer(
     private var planeFade = 1f
     private val drawOrder = ArrayList<Character>()
 
+    /** Podgląd diagnostyczny (śledzenie, płaszczyzny, wynik ostatniego dotknięcia). */
+    @Volatile
+    var debugEnabled = false
+    private var lastTapResult = "—"
+    private var lastDebugNs = 0L
+    private var trackingFrames = 0
+    private var totalFrames = 0
+
     fun queueTap(x: Float, y: Float) {
-        taps.add(floatArrayOf(x, y))
+        // trzeci element: czas dotknięcia w ms, żeby nie gubić dotknięć przy chwilowej utracie śledzenia
+        taps.add(floatArrayOf(x, y, (System.nanoTime() / 1_000_000L % 10_000_000L).toFloat()))
     }
 
     fun requestPhoto() = photoRequested.set(true)
@@ -200,7 +210,7 @@ class ArRenderer(
             processTaps(frame)
             world.update(dt)
         } else {
-            taps.clear()
+            dropStaleTaps()
         }
         updateBubbleTextures()
         planeFade += ((if (world.characters.isEmpty()) 1f else 0.45f) - planeFade) * (dt * 2f).coerceAtMost(1f)
@@ -326,6 +336,26 @@ class ArRenderer(
 
     // ------------------------------------------------------------------ dotyk
 
+    /**
+     * Gdy ARCore na chwilę traci śledzenie, dotknięcia czekają do 1,5 s zamiast znikać.
+     * Starsze odrzucamy z wyjaśnieniem.
+     */
+    private fun dropStaleTaps() {
+        val nowMs = (System.nanoTime() / 1_000_000L % 10_000_000L).toFloat()
+        var dropped = false
+        while (true) {
+            val t = taps.peek() ?: break
+            val age = nowMs - t[2]
+            if (age in 0f..1500f) break
+            taps.poll()
+            dropped = true
+        }
+        if (dropped) {
+            lastTapResult = "odrzucone: brak śledzenia"
+            listener.onMessage("Telefon zgubił trop — poruszaj nim powoli i dotknij jeszcze raz.")
+        }
+    }
+
     private fun processTaps(frame: Frame) {
         while (true) {
             val tap = taps.poll() ?: break
@@ -372,21 +402,38 @@ class ArRenderer(
     }
 
     private fun placeCharacter(frame: Frame, x: Float, y: Float) {
-        for (hit in frame.hitTest(x, y)) {
-            val plane = hit.trackable as? Plane ?: continue
-            if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) continue
-            if (!plane.isPoseInPolygon(hit.hitPose)) continue
-            val surface = planeSurfaces.surfaceFor(plane) ?: continue
-            if (world.isFull) {
-                listener.onMessage("W zeszycie mieści się najwyżej ${World.MAX_CHARACTERS} postaci!")
-                return
-            }
-            val pose = hit.hitPose
-            world.spawn(selectedKind, Vec3(pose.tx(), pose.ty(), pose.tz()), surface)
+        if (world.isFull) {
+            lastTapResult = "limit postaci"
+            listener.onMessage("W zeszycie mieści się najwyżej ${World.MAX_CHARACTERS} postaci!")
             return
         }
-        if (instantPlacement && placeOnVirtualFloor(frame, x, y)) return
-        if (world.surfaces.isNotEmpty()) listener.onMessage("Dotknij kratkowanej powierzchni, żeby postawić postać.")
+        val hits = frame.hitTest(x, y)
+        // 1) trafienie dokładnie w kratkę; 2) trafienie w płaszczyznę tuż obok kratki
+        //    (na początku wykryte fragmenty są małe, więc nie wymagamy idealnej celności)
+        for (strict in booleanArrayOf(true, false)) {
+            for (hit in hits) {
+                val plane = hit.trackable as? Plane ?: continue
+                if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) continue
+                val surface = planeSurfaces.surfaceFor(plane) ?: continue
+                val pose = hit.hitPose
+                val p = Vec3(pose.tx(), pose.ty(), pose.tz())
+                val ok = if (strict) plane.isPoseInPolygon(pose) else surface.contains(p, -NEAR_PLANE_TOLERANCE)
+                if (!ok) continue
+                world.spawn(selectedKind, p, surface)
+                lastTapResult = if (strict) "postawiono na kratce" else "postawiono obok kratki"
+                return
+            }
+        }
+        if (instantPlacement && placeOnVirtualFloor(frame, x, y)) {
+            lastTapResult = "postawiono na oko"
+            return
+        }
+        val types = hits.mapNotNull { (it.trackable as? Plane)?.type?.name?.lowercase() ?: it.trackable.javaClass.simpleName }
+        lastTapResult = "pudło (trafienia: ${types.ifEmpty { listOf("brak") }.joinToString()})"
+        listener.onMessage(
+            if (world.surfaces.any { !it.isVertical }) "Dotknij kratkowanej podłogi, żeby postawić postać."
+            else "Jeszcze nie widzę podłogi — powoli przesuwaj telefon nad podłogą."
+        )
     }
 
     private fun placeOnVirtualFloor(frame: Frame, x: Float, y: Float): Boolean {
@@ -473,6 +520,20 @@ class ArRenderer(
             lastHint = hint
             listener.onHint(hint)
         }
+        totalFrames++
+        if (tracking) trackingFrames++
+        val nowNs = System.nanoTime()
+        if (debugEnabled && nowNs - lastDebugNs > 250_000_000L) {
+            lastDebugNs = nowNs
+            val h = world.surfaces.count { !it.isVertical }
+            val v = world.surfaces.count { it.isVertical }
+            val pct = if (totalFrames > 0) trackingFrames * 100 / totalFrames else 0
+            listener.onDebug(
+                "śledzenie: ${camera.trackingState.name.lowercase()} (${camera.trackingFailureReason.name.lowercase()}), " +
+                    "OK $pct% klatek\npłaszczyzny: $h poziome, $v pionowe, wirtualne: ${virtualFloors.size}\n" +
+                    "ostatnie dotknięcie: $lastTapResult"
+            )
+        }
         if (world.characters.size != lastCount) {
             lastCount = world.characters.size
             listener.onCharacterCount(lastCount)
@@ -497,5 +558,6 @@ class ArRenderer(
         const val APPROX_FLOOR_DISTANCE = 1.2f
         const val VIRTUAL_FLOOR_HALF = 0.6f
         const val MAX_VIRTUAL_FLOORS = 3
+        const val NEAR_PLANE_TOLERANCE = 0.35f
     }
 }

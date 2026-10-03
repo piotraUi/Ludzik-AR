@@ -44,6 +44,7 @@ data class ArUiState(
     val recordSeconds: Int = 0,
     val flashCounter: Int = 0,
     val busySaving: Boolean = false,
+    val debugText: String? = null,
 )
 
 /**
@@ -92,7 +93,8 @@ class ArController(private val activity: Activity) : WorldListener, ArRendererLi
                 planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 // Nie czekamy na nową klatkę kamery — animacje mogą chodzić w 60 FPS.
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                focusMode = Config.FocusMode.AUTO
+                // Domyślny stały fokus — autofokus zmienia parametry kamery i może psuć śledzenie.
+                focusMode = Config.FocusMode.FIXED
                 lightEstimationMode = Config.LightEstimationMode.DISABLED
                 // Pozwala postawić postać, zanim ARCore znajdzie podłogę (np. jednolite płytki).
                 instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
@@ -241,6 +243,15 @@ class ArController(private val activity: Activity) : WorldListener, ArRendererLi
     override fun onMessage(text: String) = emit(text)
 
     override fun onError(text: String) = emit(text)
+
+    override fun onDebug(text: String) = _state.update { it.copy(debugText = text) }
+
+    /** Włącza/wyłącza podgląd diagnostyczny (dotknięcie licznika postaci). */
+    fun toggleDebug() {
+        renderer.debugEnabled = !renderer.debugEnabled
+        if (!renderer.debugEnabled) _state.update { it.copy(debugText = null) }
+        else _state.update { it.copy(debugText = "…") }
+    }
 
     override fun onPhoto(pixels: ByteBuffer, width: Int, height: Int) {
         sound.play(Sfx.SHUTTER)
