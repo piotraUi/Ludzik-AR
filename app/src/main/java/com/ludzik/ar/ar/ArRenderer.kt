@@ -7,6 +7,9 @@ import android.opengl.Matrix
 import android.util.Log
 import com.google.ar.core.Camera
 import com.google.ar.core.Frame
+import com.google.ar.core.HitResult
+import com.google.ar.core.Anchor
+import com.google.ar.core.DepthPoint
 import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
@@ -15,10 +18,12 @@ import com.google.ar.core.TrackingState
 import com.google.ar.core.exceptions.CameraNotAvailableException
 import com.google.ar.core.exceptions.SessionPausedException
 import com.ludzik.ar.ar.gl.BackgroundRenderer
+import com.ludzik.ar.ar.gl.DepthTexture
 import com.ludzik.ar.ar.gl.GlUtil
 import com.ludzik.ar.ar.gl.LineRenderer
 import com.ludzik.ar.ar.gl.PlaneRenderer
 import com.ludzik.ar.ar.gl.SpriteRenderer
+import kotlin.math.abs
 import com.ludzik.ar.capture.VideoRecorder
 import com.ludzik.ar.characters.Character
 import com.ludzik.ar.characters.CharacterKind
@@ -68,6 +73,10 @@ class ArRenderer(
     @Volatile
     var instantPlacement = false
 
+    /** Czy sesja ma włączone Depth API (mapa głębi z kamery). */
+    @Volatile
+    var depthEnabled = false
+
     @Volatile
     var selectedKind: CharacterKind = CharacterRegistry.kinds.first()
 
@@ -79,12 +88,13 @@ class ArRenderer(
     private val sprites = SpriteRenderer()
     private val lines = LineRenderer()
     private val planeSurfaces = PlaneSurfaces()
+    private val depth = DepthTexture()
 
     /**
      * „Podłoga na oko”: gdy ARCore nie znalazł jeszcze płaszczyzny, stawiamy postać na punkcie
      * Instant Placement i tworzymy wokół niego wirtualny kwadrat podłogi.
      */
-    private class VirtualFloor(val point: InstantPlacementPoint, val surface: WalkSurface)
+    private class VirtualFloor(val anchor: Anchor, val surface: WalkSurface)
     private val virtualFloors = ArrayList<VirtualFloor>()
     private var nextVirtualId = 1_000_000
     private val allSurfaces = ArrayList<WalkSurface>()
@@ -149,6 +159,7 @@ class ArRenderer(
         planes.create()
         sprites.create()
         lines.create()
+        depth.create()
         cameraTextureSet = false
         // Nowy kontekst = stare tekstury przepadły.
         atlases.clear()
@@ -195,6 +206,7 @@ class ArRenderer(
         background.updateGeometry(frame)
         val tracking = camera.trackingState == TrackingState.TRACKING
         if (tracking) updateCamera(camera)
+        if (depthEnabled && tracking) depth.update(frame)
 
         val realSurfaces = planeSurfaces.update(session.getAllTrackables(Plane::class.java))
         updateVirtualFloors()
@@ -215,7 +227,7 @@ class ArRenderer(
         updateBubbleTextures()
         planeFade += ((if (world.characters.isEmpty()) 1f else 0.45f) - planeFade) * (dt * 2f).coerceAtMost(1f)
 
-        renderScene(frame, tracking)
+        renderScene(frame, tracking, width, height)
 
         if (photoRequested.getAndSet(false)) {
             val buf = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
@@ -225,7 +237,7 @@ class ArRenderer(
         if (recorder.isRecording) {
             recorder.captureFrame(now) { w, h ->
                 GLES20.glViewport(0, 0, w, h)
-                renderScene(frame, tracking)
+                renderScene(frame, tracking, w, h)
             }
             GLES20.glViewport(0, 0, width, height)
         }
@@ -251,7 +263,7 @@ class ArRenderer(
 
     // ------------------------------------------------------------------ rysowanie
 
-    private fun renderScene(frame: Frame, tracking: Boolean) {
+    private fun renderScene(frame: Frame, tracking: Boolean, viewportW: Int, viewportH: Int) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         background.draw(frame)
         if (!tracking) return
@@ -278,8 +290,16 @@ class ArRenderer(
         drawOrder.clear()
         drawOrder.addAll(world.characters)
         drawOrder.sortByDescending { it.position.distanceTo(camPos) }
-        sprites.begin(viewProj)
+        // Postacie chowają się za meblami według mapy głębi; dymki zawsze na wierzchu.
+        val occlusion = if (depthEnabled && depth.isValid) {
+            SpriteRenderer.Occlusion(depth.textureId, view, background.texCoords, viewportW, viewportH)
+        } else {
+            null
+        }
+        sprites.begin(viewProj, occlusion)
         for (c in drawOrder) drawCharacter(c)
+        sprites.end()
+        sprites.begin(viewProj)
         for (b in world.bubbles) {
             val tex = bubbleTextures[b.id] ?: continue
             val owner = b.owner
@@ -424,6 +444,7 @@ class ArRenderer(
                 return
             }
         }
+        if (depthEnabled && placeOnDepthPoint(hits)) return
         if (instantPlacement && placeOnVirtualFloor(frame, x, y)) {
             lastTapResult = "postawiono na oko"
             return
@@ -436,6 +457,33 @@ class ArRenderer(
         )
     }
 
+    /**
+     * Trafienie w zmierzony punkt głębi (Depth API) skierowany w górę — czyli w kawałek podłogi,
+     * którego ARCore nie zdążył jeszcze oznaczyć kratką.
+     */
+    private fun placeOnDepthPoint(hits: List<HitResult>): Boolean {
+        for (hit in hits) {
+            if (hit.trackable !is DepthPoint) continue
+            val pose = hit.hitPose
+            val normal = pose.getTransformedAxis(1, 1f)
+            if (normal[1] < 0.75f) continue // ściana albo bok mebla
+            val p = Vec3(pose.tx(), pose.ty(), pose.tz())
+            // Jeśli tuż obok jest prawdziwa płaszczyzna na tej samej wysokości — stajemy na niej.
+            val plane = world.surfaces.firstOrNull {
+                !it.isVertical && it.alive && abs(it.height - p.y) < 0.08f && it.contains(p, -0.6f)
+            }
+            if (plane != null) {
+                world.spawn(selectedKind, p.withY(plane.height), plane)
+                lastTapResult = "postawiono (głębia + płaszczyzna)"
+                return true
+            }
+            spawnOnVirtualFloor(hit, p, "Stawiam według czujnika głębi — kratka może jeszcze nie być widoczna.")
+            lastTapResult = "postawiono (głębia)"
+            return true
+        }
+        return false
+    }
+
     private fun placeOnVirtualFloor(frame: Frame, x: Float, y: Float): Boolean {
         val hit = try {
             frame.hitTestInstantPlacement(x, y, APPROX_FLOOR_DISTANCE).firstOrNull()
@@ -443,25 +491,27 @@ class ArRenderer(
             Log.w(TAG, "Instant Placement niedostępne", e)
             null
         } ?: return false
-        val point = hit.trackable as? InstantPlacementPoint ?: return false
-        if (world.isFull) {
-            listener.onMessage("W zeszycie mieści się najwyżej ${World.MAX_CHARACTERS} postaci!")
-            return true
-        }
+        if (hit.trackable !is InstantPlacementPoint) return false
         val pose = hit.hitPose
-        val p = Vec3(pose.tx(), pose.ty(), pose.tz())
-        var floor = virtualFloors.firstOrNull { it.surface.alive && it.surface.contains(p, 0.05f) && kotlin.math.abs(it.surface.height - p.y) < 0.2f }
+        spawnOnVirtualFloor(hit, Vec3(pose.tx(), pose.ty(), pose.tz()), "Stawiam na oko — gdy telefon rozpozna podłogę, ludzik się dopasuje.")
+        return true
+    }
+
+    /** Stawia postać na istniejącej wirtualnej podłodze albo tworzy nową, zaczepioną kotwicą. */
+    private fun spawnOnVirtualFloor(hit: HitResult, p: Vec3, message: String) {
+        var floor = virtualFloors.firstOrNull { it.surface.alive && it.surface.contains(p, 0.05f) && abs(it.surface.height - p.y) < 0.2f }
         if (floor == null) {
             if (virtualFloors.size >= MAX_VIRTUAL_FLOORS) {
-                virtualFloors.removeAt(0).surface.alive = false
+                val old = virtualFloors.removeAt(0)
+                old.surface.alive = false
+                old.anchor.detach()
             }
-            floor = VirtualFloor(point, WalkSurface(nextVirtualId++, false))
+            floor = VirtualFloor(hit.createAnchor(), WalkSurface(nextVirtualId++, false))
             shapeVirtualFloor(floor.surface, p)
             virtualFloors.add(floor)
-            listener.onMessage("Stawiam na oko — gdy telefon rozpozna podłogę, ludzik się dopasuje.")
+            listener.onMessage(message)
         }
         world.spawn(selectedKind, p.withY(floor.surface.height), floor.surface)
-        return true
     }
 
     private fun shapeVirtualFloor(s: WalkSurface, c: Vec3) {
@@ -472,18 +522,18 @@ class ArRenderer(
         )
     }
 
-    /** Punkt Instant Placement doprecyzowuje pozycję z czasem — przesuwamy za nim wirtualną podłogę. */
+    /** Kotwica doprecyzowuje pozycję z czasem — przesuwamy za nią wirtualną podłogę. */
     private fun updateVirtualFloors() {
         val iter = virtualFloors.iterator()
         while (iter.hasNext()) {
             val v = iter.next()
-            when (v.point.trackingState) {
+            when (v.anchor.trackingState) {
                 TrackingState.STOPPED -> {
                     v.surface.alive = false
                     iter.remove()
                 }
                 TrackingState.TRACKING -> {
-                    val pose = v.point.pose
+                    val pose = v.anchor.pose
                     val c = Vec3(pose.tx(), pose.ty(), pose.tz())
                     if (c.distanceTo(v.surface.center) > 0.005f) shapeVirtualFloor(v.surface, c)
                 }
@@ -531,6 +581,7 @@ class ArRenderer(
             listener.onDebug(
                 "śledzenie: ${camera.trackingState.name.lowercase()} (${camera.trackingFailureReason.name.lowercase()}), " +
                     "OK $pct% klatek\npłaszczyzny: $h poziome, $v pionowe, wirtualne: ${virtualFloors.size}\n" +
+                    "głębia: ${if (!depthEnabled) "wyłączona" else if (depth.isValid) "działa" else "czekam na dane"}\n" +
                     "ostatnie dotknięcie: $lastTapResult"
             )
         }
@@ -542,7 +593,10 @@ class ArRenderer(
 
     fun clearWorld() = runOnGl {
         world.clear()
-        for (v in virtualFloors) v.surface.alive = false
+        for (v in virtualFloors) {
+            v.surface.alive = false
+            v.anchor.detach()
+        }
         virtualFloors.clear()
         searchingSinceNs = 0L
     }

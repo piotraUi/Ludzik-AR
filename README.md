@@ -94,6 +94,9 @@ com.ludzik.ar
 - **Wydajność:** `UpdateMode.LATEST_CAMERA_IMAGE`, więc animacje idą w tempie ekranu
   (kamera zostaje w domyślnym trybie, który lepiej wykrywa płaszczyzny). Symulacja 15 postaci zajmuje ~0,07 ms na klatkę (test na JVM).
   Na każdą postać przypada jedno wywołanie rysowania.
+- **Depth API** (gdy telefon je obsługuje): postacie chowają się za realnymi przedmiotami, bo shader
+  porównuje ich odległość z mapą głębi. Dotknięcie zmierzonego punktu podłogi stawia postać nawet tam,
+  gdzie nie ma jeszcze kratki. Kolejne zabezpieczenie to ARCore Instant Placement, czyli stawianie „na oko”.
 - **Dźwięki** są syntetyzowane przy pierwszym uruchomieniu (plum, skrzypienie, piszczenie gumki,
   tupot pająka, migawka…), zapisywane jako WAV w cache i odtwarzane przez SoundPool.
 
@@ -161,7 +164,7 @@ maszyna stanów, interakcje (pogoń, ucieczka, mosty, wymazywanie, wspinaczka, n
 dźwięki, wibracje, ekrany startowy/uprawnień/braku ARCore, zapis zdjęć i filmów.
 
 Do dopracowania:
-- Brak okluzji: postacie zawsze są rysowane przed meblami (można dodać ARCore Depth API).
+- Zasłanianie przez meble działa tylko na telefonach z Depth API (np. realme 14 Pro 5G). Na pozostałych postacie są zawsze na wierzchu. Krawędzie zasłaniania bywają postrzępione, bo mapa głębi ma niską rozdzielczość.
 - Wideo nie ma dźwięku (wymagałoby uprawnienia do mikrofonu i miksowania efektów).
 - Pająk wspina się tylko po ścianach wykrytych przez ARCore. Gładkie, jednolite ściany są wykrywane słabo.
 - Dymki mają stały rozmiar w świecie, skalowany odległością. Z bardzo bliska mogą być duże.

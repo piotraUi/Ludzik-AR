@@ -16,7 +16,8 @@ class BackgroundRenderer {
 
     private val quad = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
     private val quadBuf = GlUtil.floatBuffer(quad)
-    private val texCoords = FloatArray(8)
+    /** UV obrazu kamery w rogach ekranu — te same współrzędne służą do mapy głębi. */
+    val texCoords = FloatArray(8)
     private val texBuf = GlUtil.floatBuffer(8)
 
     fun create() {

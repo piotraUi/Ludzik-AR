@@ -98,7 +98,10 @@ class ArController(private val activity: Activity) : WorldListener, ArRendererLi
                 lightEstimationMode = Config.LightEstimationMode.DISABLED
                 // Pozwala postawić postać, zanim ARCore znajdzie podłogę (np. jednolite płytki).
                 instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
+                // Depth API: lepsze stawianie i chowanie się postaci za meblami.
+                if (s.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) depthMode = Config.DepthMode.AUTOMATIC
             }
+            renderer.depthEnabled = config.depthMode == Config.DepthMode.AUTOMATIC
             renderer.instantPlacement = try {
                 s.configure(config)
                 true
