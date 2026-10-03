@@ -65,6 +65,11 @@ class MainActivity : ComponentActivity(), GameEvents {
         StartupGuard.confirm(this)
         enableEdgeToEdge()
         hideSystemBars()
+        // do testów: adb shell am start -n com.ludzik.game/.MainActivity --ez autostart true
+        if (intent?.getBooleanExtra("autostart", false) == true && crashReport == null) {
+            safeMode = intent.getBooleanExtra("safe", false)
+            window.decorView.post { startGame() }
+        }
         sound = SoundManager(this)
         haptics = Haptics(this)
         setContent {
