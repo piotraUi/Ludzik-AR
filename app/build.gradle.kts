@@ -12,8 +12,8 @@ android {
         applicationId = "com.ludzik.game"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.1"
         ndk {
             // Telefony z Androidem 8+ to praktycznie wyłącznie ARM; bez x86 APK jest o połowę mniejsze.
             // ./gradlew assembleDebug -Pabi=x86_64 — wersja na emulator (do testów)

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ludzik.game.BuildConfig
 import com.ludzik.game.characters.CharacterRegistry
 import com.ludzik.game.characters.doodle.SpriteAtlas
 import kotlin.random.Random
@@ -97,6 +98,11 @@ fun StartScreen(onStart: () -> Unit) {
                     modifier = Modifier.width(180.dp),
                     fill = Doodle.Highlighter,
                     seed = 11,
+                )
+                Text(
+                    "wersja ${BuildConfig.VERSION_NAME}",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 12.sp,
                 )
                 Text(
                     "Wejdź do realistycznego pokoju i respij ludziki z zeszytu, piłki, kaczki i kartony. Dotknij ludzika, a coś powie!",
