@@ -5,8 +5,6 @@ import android.app.Activity
 import android.opengl.GLSurfaceView
 import android.view.GestureDetector
 import android.view.MotionEvent
-import com.google.ar.core.CameraConfig
-import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Config
 import com.google.ar.core.Session
 import com.google.ar.core.exceptions.CameraNotAvailableException
@@ -36,7 +34,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
-import java.util.EnumSet
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -97,9 +94,20 @@ class ArController(private val activity: Activity) : WorldListener, ArRendererLi
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                 focusMode = Config.FocusMode.AUTO
                 lightEstimationMode = Config.LightEstimationMode.DISABLED
+                // Pozwala postawić postać, zanim ARCore znajdzie podłogę (np. jednolite płytki).
+                instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
             }
-            s.configure(config)
-            pick60FpsCamera(s)
+            renderer.instantPlacement = try {
+                s.configure(config)
+                true
+            } catch (e: Exception) {
+                config.instantPlacementMode = Config.InstantPlacementMode.DISABLED
+                s.configure(config)
+                false
+            }
+            // Zostajemy przy domyślnej konfiguracji kamery: tryb 60 FPS bywa w niższej
+            // rozdzielczości, co może utrudniać wykrywanie płaszczyzn. Renderowanie i tak idzie
+            // w tempie ekranu dzięki LATEST_CAMERA_IMAGE.
             session = s
             renderer.session = s
             null
@@ -113,16 +121,6 @@ class ArController(private val activity: Activity) : WorldListener, ArRendererLi
             "Twój telefon nie obsługuje ARCore, więc ludziki nie mogą wyjść z zeszytu."
         } catch (e: Exception) {
             "Nie udało się uruchomić AR: ${e.localizedMessage}"
-        }
-    }
-
-    private fun pick60FpsCamera(s: Session) {
-        try {
-            val filter = CameraConfigFilter(s).setTargetFps(EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_60))
-            val configs = s.getSupportedCameraConfigs(filter)
-            if (configs.isNotEmpty()) s.cameraConfig = configs[0]
-        } catch (_: Exception) {
-            // zostaje domyślna konfiguracja 30 FPS
         }
     }
 

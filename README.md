@@ -52,6 +52,10 @@ Testy (JVM, bez telefonu):
 6. **Zrób zdjęcie** zapisuje kadr w `Obrazy/LudzikAR`. **Nagraj** zapisuje film (do 30 s, bez dźwięku)
    w `Filmy/LudzikAR`.
 
+Jeśli podłoga długo nie jest rozpoznawana (np. jednolite płytki), po kilku sekundach możesz po prostu
+dotknąć ekranu w miejscu podłogi. Postać stanie „na oko” (ARCore Instant Placement) i dopasuje się,
+gdy telefon lepiej zrozumie scenę.
+
 Najlepiej działa w jasnym pokoju, na podłodze ze wzorem (dywan, panele), ze stołem lub kanapą w kadrze.
 
 ## Architektura
@@ -87,8 +91,8 @@ com.ludzik.ar
   (7 animacji × 4 klatki). Każda klatka ma inne ziarno losowości, dlatego kreski „gotują się” jak w animacji
   poklatkowej. Jedyny dołączony plik to czcionka Caveat (SIL OFL, licencja w `FONT-LICENSE-Caveat.txt`),
   bo systemowa czcionka „cursive” nie ma polskich znaków.
-- **Wydajność:** `UpdateMode.LATEST_CAMERA_IMAGE` i próba wybrania konfiguracji kamery 60 FPS,
-  więc animacje idą w tempie ekranu. Symulacja 15 postaci zajmuje ~0,07 ms na klatkę (test na JVM).
+- **Wydajność:** `UpdateMode.LATEST_CAMERA_IMAGE`, więc animacje idą w tempie ekranu
+  (kamera zostaje w domyślnym trybie, który lepiej wykrywa płaszczyzny). Symulacja 15 postaci zajmuje ~0,07 ms na klatkę (test na JVM).
   Na każdą postać przypada jedno wywołanie rysowania.
 - **Dźwięki** są syntetyzowane przy pierwszym uruchomieniu (plum, skrzypienie, piszczenie gumki,
   tupot pająka, migawka…), zapisywane jako WAV w cache i odtwarzane przez SoundPool.

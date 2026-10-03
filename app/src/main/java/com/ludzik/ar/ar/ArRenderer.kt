@@ -7,6 +7,7 @@ import android.opengl.Matrix
 import android.util.Log
 import com.google.ar.core.Camera
 import com.google.ar.core.Frame
+import com.google.ar.core.InstantPlacementPoint
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
@@ -24,6 +25,7 @@ import com.ludzik.ar.characters.CharacterKind
 import com.ludzik.ar.characters.CharacterRegistry
 import com.ludzik.ar.characters.DecalType
 import com.ludzik.ar.characters.Vec3
+import com.ludzik.ar.characters.WalkSurface
 import com.ludzik.ar.characters.World
 import com.ludzik.ar.characters.doodle.BubbleArt
 import com.ludzik.ar.characters.doodle.DecalArt
@@ -38,7 +40,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /** Wskazówka dla użytkownika wyświetlana nad sceną. */
-enum class TrackingHint { NONE, STARTING, SEARCHING_PLANE, PLACE, LOST_MOTION, LOST_DARK, LOST_FEATURES, LOST_OTHER }
+enum class TrackingHint { NONE, STARTING, SEARCHING_PLANE, ONLY_WALLS, TAP_ANYWAY, PLACE, LOST_MOTION, LOST_DARK, LOST_FEATURES, LOST_OTHER }
 
 interface ArRendererListener {
     fun onHint(hint: TrackingHint)
@@ -61,6 +63,10 @@ class ArRenderer(
     @Volatile
     var session: Session? = null
 
+    /** Czy sesja ma włączone Instant Placement (stawianie przed wykryciem podłogi). */
+    @Volatile
+    var instantPlacement = false
+
     @Volatile
     var selectedKind: CharacterKind = CharacterRegistry.kinds.first()
 
@@ -72,6 +78,16 @@ class ArRenderer(
     private val sprites = SpriteRenderer()
     private val lines = LineRenderer()
     private val planeSurfaces = PlaneSurfaces()
+
+    /**
+     * „Podłoga na oko”: gdy ARCore nie znalazł jeszcze płaszczyzny, stawiamy postać na punkcie
+     * Instant Placement i tworzymy wokół niego wirtualny kwadrat podłogi.
+     */
+    private class VirtualFloor(val point: InstantPlacementPoint, val surface: WalkSurface)
+    private val virtualFloors = ArrayList<VirtualFloor>()
+    private var nextVirtualId = 1_000_000
+    private val allSurfaces = ArrayList<WalkSurface>()
+    private var searchingSinceNs = 0L
 
     private val atlases = HashMap<CharacterKind, Int>()
     private var decalTexture = 0
@@ -170,7 +186,12 @@ class ArRenderer(
         val tracking = camera.trackingState == TrackingState.TRACKING
         if (tracking) updateCamera(camera)
 
-        world.surfaces = planeSurfaces.update(session.getAllTrackables(Plane::class.java))
+        val realSurfaces = planeSurfaces.update(session.getAllTrackables(Plane::class.java))
+        updateVirtualFloors()
+        allSurfaces.clear()
+        allSurfaces.addAll(realSurfaces)
+        for (v in virtualFloors) if (v.surface.alive) allSurfaces.add(v.surface)
+        world.surfaces = allSurfaces
 
         val now = System.nanoTime()
         val dt = if (lastNs == 0L) 0f else ((now - lastNs) / 1e9f).coerceIn(0f, 0.05f)
@@ -364,7 +385,64 @@ class ArRenderer(
             world.spawn(selectedKind, Vec3(pose.tx(), pose.ty(), pose.tz()), surface)
             return
         }
+        if (instantPlacement && placeOnVirtualFloor(frame, x, y)) return
         if (world.surfaces.isNotEmpty()) listener.onMessage("Dotknij kratkowanej powierzchni, żeby postawić postać.")
+    }
+
+    private fun placeOnVirtualFloor(frame: Frame, x: Float, y: Float): Boolean {
+        val hit = try {
+            frame.hitTestInstantPlacement(x, y, APPROX_FLOOR_DISTANCE).firstOrNull()
+        } catch (e: Exception) {
+            Log.w(TAG, "Instant Placement niedostępne", e)
+            null
+        } ?: return false
+        val point = hit.trackable as? InstantPlacementPoint ?: return false
+        if (world.isFull) {
+            listener.onMessage("W zeszycie mieści się najwyżej ${World.MAX_CHARACTERS} postaci!")
+            return true
+        }
+        val pose = hit.hitPose
+        val p = Vec3(pose.tx(), pose.ty(), pose.tz())
+        var floor = virtualFloors.firstOrNull { it.surface.alive && it.surface.contains(p, 0.05f) && kotlin.math.abs(it.surface.height - p.y) < 0.2f }
+        if (floor == null) {
+            if (virtualFloors.size >= MAX_VIRTUAL_FLOORS) {
+                virtualFloors.removeAt(0).surface.alive = false
+            }
+            floor = VirtualFloor(point, WalkSurface(nextVirtualId++, false))
+            shapeVirtualFloor(floor.surface, p)
+            virtualFloors.add(floor)
+            listener.onMessage("Stawiam na oko — gdy telefon rozpozna podłogę, ludzik się dopasuje.")
+        }
+        world.spawn(selectedKind, p.withY(floor.surface.height), floor.surface)
+        return true
+    }
+
+    private fun shapeVirtualFloor(s: WalkSurface, c: Vec3) {
+        val h = VIRTUAL_FLOOR_HALF
+        s.update(
+            listOf(Vec3(c.x - h, c.y, c.z - h), Vec3(c.x + h, c.y, c.z - h), Vec3(c.x + h, c.y, c.z + h), Vec3(c.x - h, c.y, c.z + h)),
+            c, Vec3.UP,
+        )
+    }
+
+    /** Punkt Instant Placement doprecyzowuje pozycję z czasem — przesuwamy za nim wirtualną podłogę. */
+    private fun updateVirtualFloors() {
+        val iter = virtualFloors.iterator()
+        while (iter.hasNext()) {
+            val v = iter.next()
+            when (v.point.trackingState) {
+                TrackingState.STOPPED -> {
+                    v.surface.alive = false
+                    iter.remove()
+                }
+                TrackingState.TRACKING -> {
+                    val pose = v.point.pose
+                    val c = Vec3(pose.tx(), pose.ty(), pose.tz())
+                    if (c.distanceTo(v.surface.center) > 0.005f) shapeVirtualFloor(v.surface, c)
+                }
+                else -> Unit
+            }
+        }
     }
 
     // ------------------------------------------------------------------ status
@@ -378,7 +456,16 @@ class ArRenderer(
                 TrackingFailureReason.NONE -> TrackingHint.STARTING
                 else -> TrackingHint.LOST_OTHER
             }
-            world.surfaces.none { !it.isVertical } -> TrackingHint.SEARCHING_PLANE
+            world.surfaces.none { !it.isVertical } -> {
+                val now = System.nanoTime()
+                if (searchingSinceNs == 0L) searchingSinceNs = now
+                val searchingFor = (now - searchingSinceNs) / 1e9f
+                when {
+                    instantPlacement && searchingFor > 6f -> TrackingHint.TAP_ANYWAY
+                    world.surfaces.isNotEmpty() -> TrackingHint.ONLY_WALLS
+                    else -> TrackingHint.SEARCHING_PLANE
+                }
+            }
             world.characters.isEmpty() -> TrackingHint.PLACE
             else -> TrackingHint.NONE
         }
@@ -394,6 +481,9 @@ class ArRenderer(
 
     fun clearWorld() = runOnGl {
         world.clear()
+        for (v in virtualFloors) v.surface.alive = false
+        virtualFloors.clear()
+        searchingSinceNs = 0L
     }
 
     /** Po wznowieniu sesji ARCore stare płaszczyzny tracą ważność. */
@@ -404,5 +494,8 @@ class ArRenderer(
 
     private companion object {
         const val TAG = "ArRenderer"
+        const val APPROX_FLOOR_DISTANCE = 1.2f
+        const val VIRTUAL_FLOOR_HALF = 0.6f
+        const val MAX_VIRTUAL_FLOORS = 3
     }
 }

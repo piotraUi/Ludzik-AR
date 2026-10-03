@@ -174,6 +174,8 @@ private fun hintText(hint: TrackingHint, kindName: String): String? = when (hint
     TrackingHint.NONE -> null
     TrackingHint.STARTING -> "Poruszaj powoli telefonem, żeby rozejrzeć się po pokoju"
     TrackingHint.SEARCHING_PLANE -> "Szukam podłogi… celuj w podłogę i powoli poruszaj telefonem"
+    TrackingHint.ONLY_WALLS -> "Widzę ścianę, ale nie podłogę — skieruj telefon bardziej w dół"
+    TrackingHint.TAP_ANYWAY -> "Podłoga jest trudna do rozpoznania. Dotknij ekranu w miejscu podłogi, a postawię $kindName na oko"
     TrackingHint.PLACE -> "Dotknij kratkowanej podłogi, żeby postawić: $kindName"
     TrackingHint.LOST_MOTION -> "Za szybko! Poruszaj telefonem wolniej"
     TrackingHint.LOST_DARK -> "Za ciemno — zapal światło, ludziki się boją"
