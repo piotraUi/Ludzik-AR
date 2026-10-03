@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LudzikAR"
+rootProject.name = "Ludzik3D"
 include(":app")

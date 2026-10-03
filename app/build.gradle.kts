@@ -5,15 +5,19 @@ plugins {
 }
 
 android {
-    namespace = "com.ludzik.ar"
+    namespace = "com.ludzik.game"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.ludzik.ar"
+        applicationId = "com.ludzik.game"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
+        ndk {
+            // Telefony z Androidem 8+ to praktycznie wyłącznie ARM; bez x86 APK jest o połowę mniejsze.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
@@ -28,6 +32,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+    androidResources {
+        // modele i HDRI czytamy w całości do pamięci — kompresja w APK tylko spowalnia start
+        noCompress += listOf("glb", "hdr")
     }
     buildFeatures {
         compose = true
@@ -49,7 +57,9 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.arcore)
+    implementation(libs.filament.android)
+    implementation(libs.filament.gltfio)
+    implementation(libs.filament.utils)
     implementation(libs.kotlinx.coroutines.android)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)

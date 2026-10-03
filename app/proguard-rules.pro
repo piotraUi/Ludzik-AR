@@ -1,2 +1,2 @@
-# ARCore
--keep class com.google.ar.** { *; }
+# Filament (JNI)
+-keep class com.google.android.filament.** { *; }

@@ -1,171 +1,113 @@
-# Ludzik AR ✏️
+# Ludzik 3D ✏️
 
-Natywna aplikacja na Androida (Kotlin + Jetpack Compose + ARCore). Kamera pokazuje Twój pokój,
-a po podłodze biegają ludziki narysowane ołówkiem w zeszycie: z niedbałymi kreskami, chwiejną animacją
-klatka po klatce i białą obwódką, jakby ktoś je wyciął z kartki.
+Gra na Androida (Kotlin, Jetpack Compose, Filament). Chodzisz z widoku pierwszej osoby po realistycznym
+mieszkaniu i respisz w nim ludziki narysowane ołówkiem w zeszycie oraz prawdziwe przedmioty z fizyką.
 
-| Postać | Charakter |
-|---|---|
-| **Ludzik** | Klasyczny ludzik z patyków. Spokojnie spaceruje, macha do innych postaci i ucieka przed Gumką. |
-| **Kleks** | Plama atramentu. Pełza, zostawia ślady na podłodze i chlapie przy każdym lądowaniu. Panicznie boi się Gumki. |
-| **Gumka** | Dwukolorowa gumka do mazania. Poluje na inne postacie i je „wymazuje” (znikają na ~4,5 s). |
-| **Ołówek** | Rysuje grafitowe linie po podłodze i rampy na wyższe płaszczyzny. Po tych mostach chodzą inne postacie. |
-| **Pająk z długopisu** | Wspina się po ścianach i krawędziach mebli i zjeżdża na nitce. Długopisu nie da się wymazać, więc Gumka jest wobec niego bezradna. |
+- **Realistyczna scena 3D:** parkiet w jodełkę, sofa, fotel, stoliki, regał, roślina i lampa.
+  Modele i tekstury PBR pochodzą z Poly Haven (CC0). Oświetlenie to HDRI wnętrza plus słońce wpadające
+  przez okno, z cieniami, SSAO, bloomem i tone mappingiem AgX.
+- **Pierwsza osoba:** lewym kciukiem chodzisz (joystick pojawia się pod palcem), prawym się rozglądasz.
+  Możesz skakać, wchodzić na meble i kopać piłkę. Na ekranie widać twoją narysowaną rękę z ołówkiem.
+- **Respienie:** celujesz krzyżykiem i naciskasz „Respnij”.
+  - Ludziki (Ludzik, Kleks, Gumka, Ołówek, Pająk) stają na podłodze albo na blacie.
+  - Przedmioty (piłka, kaczka, karton, jabłko, skrzynka) spadają, odbijają się i toczą.
+    „Rzuć” rzuca wybranym przedmiotem przed siebie.
+- **Interakcje:** dotknij ludzika, a podskoczy i coś powie. Dotknij przedmiotu, a go popchniesz.
+  Rzucona piłka trafiająca w ludzika powoduje „Ała!”.
+  Ludziki zachowują się jak wcześniej:
+  - Gumka goni i wymazuje,
+  - Kleks ucieka i chlapie,
+  - Ołówek rysuje mosty na meble,
+  - Pająk wspina się po ścianach.
+- **Zdjęcie:** zapisuje kadr do galerii (`Obrazy/LudzikAR`).
 
 ## Wymagania
 
-- Android Studio Ladybug lub nowsze **albo** JDK 17+ i Android SDK (platforma 35, build-tools 35)
-- Telefon z Androidem 8.0+ (minSdk 26) i obsługą ARCore ([lista urządzeń](https://developers.google.com/ar/devices))
-- Emulator nie wystarczy do pełnego testu, bo potrzebna jest prawdziwa kamera i ARCore.
+- JDK 17+ i Android SDK (platforma 35) albo Android Studio
+- Telefon z Androidem 8.0+ i OpenGL ES 3.0 (praktycznie każdy telefon z ostatnich lat).
+  ARCore ani kamera nie są potrzebne.
 
-## Budowanie
-
-```bash
-# ścieżka do SDK: zmienna ANDROID_HOME albo plik local.properties (sdk.dir=...)
-./gradlew assembleDebug
-```
-
-Gotowy plik APK znajdziesz w `app/build/outputs/apk/debug/app-debug.apk`.
-
-Testy (JVM, bez telefonu):
+## Budowanie i uruchomienie
 
 ```bash
-./gradlew testDebugUnitTest
+./gradlew assembleDebug          # APK: app/build/outputs/apk/debug/app-debug.apk
+./gradlew installDebug           # instalacja na podłączonym telefonie (debugowanie USB)
+./gradlew testDebugUnitTest      # testy na JVM, bez telefonu
 ```
 
-- `WorldSimulationTest` uruchamia 3 minuty symulacji 15 postaci na sztucznej podłodze ze stołem i ścianą.
-  Sprawdza, że postacie wskakują na stół, Pająk się wspina, Gumka kogoś wymazuje, a Ołówek rysuje most.
-  Sprawdza też, że postacie nie wypadają poza pokój i że klatka symulacji zajmuje mniej niż 2 ms.
-- `DoodleRenderTest` generuje atlasy sprite'ów i zapisuje je jako PNG w `app/build/doodles/`.
-- `ScreensRenderTest` robi zrzuty ekranów Compose do `app/build/screens/` (Robolectric, natywna grafika).
+Testy:
 
-## Uruchomienie na telefonie
+| Test | Co sprawdza |
+|---|---|
+| `GameLogicTest` | Kolizje gracza (sofa blokuje, na stolik da się wskoczyć), fizykę (odbicie i spoczynek piłki, karton na stoliku, rzucone rzeczy zostają w pokoju), kopanie piłki, celowanie i respienie na podłodze i na stole, 2 minuty życia 15 ludzików w pokoju |
+| `WorldSimulationTest` | Zachowania ludzików na sztucznej scenie |
+| `DoodleRenderTest` | Generuje atlasy postaci do `app/build/doodles/` |
+| `ScreensRenderTest` | Zrzuty interfejsu do `app/build/screens/` |
 
-1. Włącz w telefonie **Opcje programisty → Debugowanie USB** i podłącz go kablem.
-2. Wpisz `./gradlew installDebug` albo `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
-   Możesz też uruchomić projekt w Android Studio przyciskiem ▶.
-3. Otwórz aplikację, stuknij **Start**, zgódź się na kamerę. Jeśli brakuje *Usług Google Play dla AR*,
-   aplikacja sama poprosi o ich instalację.
-4. Powoli poruszaj telefonem i celuj w podłogę. Wykryte płaszczyzny pojawią się jako niebieska kratka.
-5. Wybierz postać na dolnym pasku i dotknij kratki, żeby ją postawić (najwyżej 15 postaci).
-   Dotknij postaci, a podskoczy i coś powie.
-6. **Zrób zdjęcie** zapisuje kadr w `Obrazy/LudzikAR`. **Nagraj** zapisuje film (do 30 s, bez dźwięku)
-   w `Filmy/LudzikAR`.
+## Zasoby 3D
 
-Jeśli podłoga długo nie jest rozpoznawana (np. jednolite płytki), po kilku sekundach możesz po prostu
-dotknąć ekranu w miejscu podłogi. Postać stanie „na oko” (ARCore Instant Placement) i dopasuje się,
-gdy telefon lepiej zrozumie scenę.
+Gotowe zasoby leżą w `app/src/main/assets` (ok. 23 MB). Generuje je skrypt:
 
-Najlepiej działa w jasnym pokoju, na podłodze ze wzorem (dywan, panele), ze stołem lub kanapą w kadrze.
+```bash
+pip install pillow
+python3 tools/build_assets.py
+```
+
+Skrypt pobiera modele, tekstury i HDRI z [Poly Haven](https://polyhaven.com) (CC0), pakuje je do `.glb`
+i buduje geometrię pokoju (ściany z oknem, listwy, dywan). Na koniec zapisuje układ mebli i bryły
+kolizji do `RoomLayout.kt`, dzięki czemu fizykę i AI da się testować bez telefonu.
+Żeby zmienić umeblowanie, edytuj listę `FURNITURE` w skrypcie i uruchom go ponownie.
 
 ## Architektura
 
 ```
-com.ludzik.ar
-├── MainActivity            nawigacja, uprawnienia, sprawdzanie i instalacja ARCore
-├── ar/                     wszystko, co zależy od ARCore i OpenGL
-│   ├── ArController        sesja ARCore, cykl życia, GLSurfaceView, zdjęcia/wideo, stan UI (StateFlow)
-│   ├── ArRenderer          pętla klatki: kamera → płaszczyzny → naklejki → linie → postacie → dymki
-│   ├── PlaneSurfaces       płaszczyzny ARCore → WalkSurface (stabilne obiekty dla logiki)
-│   └── gl/                 shadery GLES 2.0: tło kamery, kratka, sprite'y-billboardy, linie-wstążki
-├── characters/             logika i grafika postaci, bez zależności od ARCore (testowalna na JVM)
-│   ├── Character           interfejs postaci + CharacterKind (opis, rysowanie, fabryka)
-│   ├── CharacterRegistry   lista postaci w menu
-│   ├── BaseCharacter       maszyna stanów: IDLE/WALK/RUN/JUMP/REACT/PATH/ERASED, skoki, mosty, ucieczka
-│   ├── World               postacie, plamy, linie, dymki, zapytania o powierzchnie
-│   ├── WalkSurface         wypukły wielokąt z marginesem krawędzi, ściany
-│   ├── Ludzik, Kleks, Gumka, Olowek, Pajak
-│   └── doodle/             DoodlePen (kreski z jitterem), atlas sprite'ów, plamy, dymki komiksowe
-├── audio/                  SoundSynth (synteza efektów do WAV), SoundManager (SoundPool), Haptics
-├── capture/                VideoRecorder (MediaRecorder + powierzchnia EGL), MediaSaver (MediaStore)
-└── ui/                     Compose: okładka zeszytu, ekrany statusu, nakładka AR, wybór postaci
+com.ludzik.game
+├── MainActivity        ekran startowy ↔ gra, dźwięk, wibracje, zdjęcia
+├── game/
+│   ├── GameController  cała logika bez Androida: gracz, fizyka, ludziki, celowanie, respienie
+│   └── GameHost        SurfaceView + pętla Choreographera (logika → renderer → Filament)
+├── render/
+│   ├── FilamentCore    silnik, kamera, jakość obrazu (AgX, SSAO, bloom, cienie DPCF)
+│   ├── GameRenderer    ładowanie sceny krok po kroku, IBL z HDRI, słońce, pule przedmiotów
+│   └── BillboardBatch  rysunkowe ludziki, plamy, linie i dymki jako dynamiczne prostokąty
+│                       (materiał unlit z gltfio, bez własnych shaderów do kompilowania)
+├── scene/              RoomLayout (wygenerowany), RoomGeometry (kolizje, promienie),
+│                       CharacterSpace (most między pokojem a światem ludzików)
+├── physics/            PhysicsWorld: grawitacja, odbicia, toczenie, zderzenia, kopanie
+├── player/             Player: chodzenie, skok, wchodzenie na meble
+├── characters/         ludziki z zeszytu (bez zmian od wersji AR) + rysowanie ołówkiem
+├── audio/              syntezowane dźwięki i wibracje
+└── ui/                 Compose: okładka zeszytu, HUD, joystick, menu respienia
 ```
 
-### Najważniejsze decyzje
-
-- **Renderowanie:** zamiast Sceneform lub SceneView (Filament) jest lekki renderer GLES 2.0 bezpośrednio na
-  ARCore. Postacie to płaskie billboardy 2D, więc pełny silnik 3D nie jest potrzebny, a własny renderer daje
-  pełną kontrolę nad przezroczystością, liniami i nagrywaniem wideo (ta sama scena rysowana drugi raz do
-  powierzchni enkodera).
-- **Grafika bez assetów:** każda klatka jest rysowana kodem (`Canvas`/`Path`) przy starcie do atlasu tekstur
-  (7 animacji × 4 klatki). Każda klatka ma inne ziarno losowości, dlatego kreski „gotują się” jak w animacji
-  poklatkowej. Jedyny dołączony plik to czcionka Caveat (SIL OFL, licencja w `FONT-LICENSE-Caveat.txt`),
-  bo systemowa czcionka „cursive” nie ma polskich znaków.
-- **Wydajność:** `UpdateMode.LATEST_CAMERA_IMAGE`, więc animacje idą w tempie ekranu
-  (kamera zostaje w domyślnym trybie, który lepiej wykrywa płaszczyzny). Symulacja 15 postaci zajmuje ~0,07 ms na klatkę (test na JVM).
-  Na każdą postać przypada jedno wywołanie rysowania.
-- **Depth API** (gdy telefon je obsługuje): postacie chowają się za realnymi przedmiotami, bo shader
-  porównuje ich odległość z mapą głębi. Dotknięcie zmierzonego punktu podłogi stawia postać nawet tam,
-  gdzie nie ma jeszcze kratki. Kolejne zabezpieczenie to ARCore Instant Placement, czyli stawianie „na oko”.
-- **Dźwięki** są syntetyzowane przy pierwszym uruchomieniu (plum, skrzypienie, piszczenie gumki,
-  tupot pająka, migawka…), zapisywane jako WAV w cache i odtwarzane przez SoundPool.
+Ludziki mają w świecie gry ok. 72 cm, czyli są 3× większe niż w wersji AR. Ich logika działa w swojej
+dawnej skali, a `CharacterSpace` przelicza pozycje (×3). Dzięki temu skoki na stół, mosty Ołówka
+i wspinaczka Pająka działają bez zmian.
 
 ## Jak dodać nową postać
 
-Wystarczy jedna klasa i jedna linijka w rejestrze. Przykład, `Spinacz`:
+Jak wcześniej: jedna klasa z `companion object Kind : CharacterKind(...)` w pakiecie `characters`
+i jedna linijka w `CharacterRegistry.kinds`. Postać sama pojawi się w menu respienia i w atlasie tekstur.
 
-```kotlin
-package com.ludzik.ar.characters
+## Jak dodać nowy przedmiot
 
-import com.ludzik.ar.characters.doodle.DoodlePen
-import com.ludzik.ar.characters.doodle.phase
-import kotlin.math.sin
-
-class Spinacz(id: Int, start: Vec3, surface: WalkSurface) : BaseCharacter(id, Kind, start, surface) {
-
-    override val walkSpeed = 0.1f
-
-    // (opcjonalnie) własne decyzje; domyślnie: postój, spacer, bieg, skok na stół, akcja
-    override fun decide() {
-        if (rnd.nextFloat() < 0.3f) hop(0.2f) else defaultDecide()
-    }
-
-    // (opcjonalnie) reakcje na otoczenie, wołane co klatkę
-    override fun sense(dt: Float) {
-        val gumka = world.nearest(this, 0.5f) { it is Gumka } ?: return
-        if (state != State.RUN && sameLevel(gumka)) flee(gumka.position)
-    }
-
-    companion object Kind : CharacterKind(
-        id = "spinacz",
-        displayName = "Spinacz",
-        spriteSizeMeters = 0.16f,
-        phrases = listOf("Trzymam się!", "Spinam, co się da"),
-    ) {
-        override fun create(id: Int, position: Vec3, surface: WalkSurface) = Spinacz(id, position, surface)
-
-        // Rysowanie w kwadracie 0..1 (Y w dół, ziemia na y≈0.95), osobno dla każdej animacji i klatki.
-        override fun draw(pen: DoodlePen, anim: Anim, frame: Int) {
-            val bob = if (anim == Anim.WALK) sin(phase(frame)) * 0.02f else 0f
-            pen.ellipse(0.5f, 0.6f + bob, 0.12f, 0.3f, color = 0xFF90A4AE.toInt())
-            pen.ellipse(0.5f, 0.66f + bob, 0.07f, 0.2f, color = 0xFF90A4AE.toInt())
-            pen.dot(0.47f, 0.45f + bob, 0.012f)
-            pen.dot(0.53f, 0.45f + bob, 0.012f)
-        }
-    }
-}
-```
-
-Potem dopisz postać w `CharacterRegistry.kinds`:
-
-```kotlin
-val kinds = listOf(Ludzik, Kleks, Gumka, Olowek, Pajak, Spinacz)
-```
-
-Ikona w menu, atlas tekstur, dymki, cień, wymazywanie i dotyk działają automatycznie.
-`BaseCharacter` udostępnia gotowe akcje:
-`idle`, `walkTo`, `wander`, `flee`, `hop`, `jumpTo`, `followPath`, `goToSurface`, `tryVisitOtherSurface`, `react`.
-Nową postać warto obejrzeć w `app/build/doodles/` po uruchomieniu `DoodleRenderTest`.
+1. Dopisz model Poly Haven do `SPAWNABLES` w `tools/build_assets.py` i uruchom skrypt.
+2. Dodaj rysunkową ikonę w `ObjectIcons.kt`.
 
 ## Co działa, a co jest do dopracowania
 
-Działa (zweryfikowane buildem, testami JVM i podglądem grafiki): wszystkie 5 postaci z animacjami,
-maszyna stanów, interakcje (pogoń, ucieczka, mosty, wymazywanie, wspinaczka, nitka), dymki,
-dźwięki, wibracje, ekrany startowy/uprawnień/braku ARCore, zapis zdjęć i filmów.
+Zweryfikowane bez telefonu:
+- build (`assembleDebug`) i testy JVM,
+- wygląd sceny: podgląd tych samych modeli i świateł w przeglądarce (three.js),
+- zrzuty interfejsu.
 
-Do dopracowania:
-- Zasłanianie przez meble działa tylko na telefonach z Depth API (np. realme 14 Pro 5G). Na pozostałych postacie są zawsze na wierzchu. Krawędzie zasłaniania bywają postrzępione, bo mapa głębi ma niską rozdzielczość.
-- Wideo nie ma dźwięku (wymagałoby uprawnienia do mikrofonu i miksowania efektów).
-- Pająk wspina się tylko po ścianach wykrytych przez ARCore. Gładkie, jednolite ściany są wykrywane słabo.
-- Dymki mają stały rozmiar w świecie, skalowany odległością. Z bardzo bliska mogą być duże.
-- Renderer i nagrywanie nie zostały przetestowane na fizycznym urządzeniu w trakcie tworzenia projektu.
+Nie dało się sprawdzić w tym środowisku (brak emulatora z GPU), wymaga testu na telefonie:
+- pierwsze uruchomienie renderera Filament,
+- dobór jasności: ekspozycja kamery, natężenie IBL i słońca (`GameRenderer.IBL_INTENSITY`, `SUN_LUX`),
+- płynność na słabszych telefonach (rozdzielczość dynamiczna jest włączona).
+
+Pomysły na dalszy rozwój:
+- więcej pokoi,
+- cienie rzucane przez ludziki,
+- nagrywanie wideo,
+- dźwięk przestrzenny.
