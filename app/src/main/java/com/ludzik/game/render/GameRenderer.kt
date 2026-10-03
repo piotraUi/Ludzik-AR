@@ -63,6 +63,7 @@ class GameRenderer(private val core: FilamentCore, private val game: GameControl
     private lateinit var lines: BillboardBatch
     private lateinit var bubbles: BillboardBatch
     private lateinit var bubbleAtlas: Texture
+    private val failedBubbles = HashSet<Long>()
     private val bubbleSlots = HashMap<Long, Int>()
     private val bubbleAspect = HashMap<Long, Float>()
 
@@ -365,23 +366,31 @@ class GameRenderer(private val core: FilamentCore, private val game: GameControl
     private fun updateBubbleAtlas() {
         val live = game.world.bubbles.map { it.id }.toHashSet()
         bubbleSlots.keys.retainAll(live)
+        failedBubbles.retainAll(live)
         bubbleAspect.keys.retainAll(live)
         for (b in game.world.bubbles) {
-            if (bubbleSlots.containsKey(b.id)) continue
+            if (bubbleSlots.containsKey(b.id) || b.id in failedBubbles) continue
             val used = bubbleSlots.values.toHashSet()
             val slot = (0 until BUBBLE_COLS * BUBBLE_ROWS).firstOrNull { it !in used } ?: break
-            val art = BubbleArt.render(b.text, b.id)
-            val cell = Bitmap.createBitmap(BUBBLE_W, BUBBLE_H, Bitmap.Config.ARGB_8888)
-            val scale = min(BUBBLE_W / art.bitmap.width.toFloat(), BUBBLE_H / art.bitmap.height.toFloat())
-            Canvas(cell).apply {
-                scale(scale, scale)
-                drawBitmap(art.bitmap, 0f, 0f, null)
+            try {
+                val art = BubbleArt.render(b.text, b.id)
+                val cell = Bitmap.createBitmap(BUBBLE_W, BUBBLE_H, Bitmap.Config.ARGB_8888)
+                val scale = min(BUBBLE_W / art.bitmap.width.toFloat(), BUBBLE_H / art.bitmap.height.toFloat())
+                Canvas(cell).apply {
+                    scale(scale, scale)
+                    drawBitmap(art.bitmap, 0f, 0f, null)
+                }
+                art.bitmap.recycle()
+                Textures.upload(engine, bubbleAtlas, cell, (slot % BUBBLE_COLS) * BUBBLE_W, (slot / BUBBLE_COLS) * BUBBLE_H)
+                cell.recycle()
+                bubbleSlots[b.id] = slot
+                bubbleAspect[b.id] = art.aspect
+            } catch (e: Exception) {
+                // Dymek to tylko ozdoba — jego błąd nie może zatrzymać gry.
+                Log.e(TAG, "Nie udało się wgrać dymka", e)
+                failedBubbles += b.id
+                loadErrors += "dymek: ${e.message}"
             }
-            art.bitmap.recycle()
-            Textures.upload(engine, bubbleAtlas, cell, (slot % BUBBLE_COLS) * BUBBLE_W, (slot / BUBBLE_COLS) * BUBBLE_H)
-            cell.recycle()
-            bubbleSlots[b.id] = slot
-            bubbleAspect[b.id] = art.aspect
         }
     }
 

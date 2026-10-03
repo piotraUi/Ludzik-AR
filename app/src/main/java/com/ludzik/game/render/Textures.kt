@@ -11,12 +11,17 @@ import kotlin.math.ln
 import kotlin.math.max
 
 object Textures {
-    val mipmapped = TextureSampler(
-        TextureSampler.MinFilter.LINEAR_MIPMAP_LINEAR, TextureSampler.MagFilter.LINEAR, TextureSampler.WrapMode.CLAMP_TO_EDGE,
-    )
-    val linear = TextureSampler(
-        TextureSampler.MinFilter.LINEAR, TextureSampler.MagFilter.LINEAR, TextureSampler.WrapMode.CLAMP_TO_EDGE,
-    )
+    // leniwe, bo TextureSampler woła kod natywny (niedostępny w testach na JVM)
+    val mipmapped by lazy {
+        TextureSampler(
+            TextureSampler.MinFilter.LINEAR_MIPMAP_LINEAR, TextureSampler.MagFilter.LINEAR, TextureSampler.WrapMode.CLAMP_TO_EDGE,
+        )
+    }
+    val linear by lazy {
+        TextureSampler(
+            TextureSampler.MinFilter.LINEAR, TextureSampler.MagFilter.LINEAR, TextureSampler.WrapMode.CLAMP_TO_EDGE,
+        )
+    }
 
     fun create(engine: Engine, width: Int, height: Int, mipmaps: Boolean): Texture {
         val levels = if (mipmaps) floor(ln(max(width, height).toDouble()) / ln(2.0)).toInt() + 1 else 1
@@ -55,6 +60,15 @@ object Textures {
             buf.put((c ushr 24).toByte())
         }
         buf.flip()
-        texture.setImage(engine, 0, x, y, w, h, Texture.PixelBufferDescriptor(buf, Texture.Format.RGBA, Texture.Type.UBYTE))
+        texture.setImage(engine, 0, x, y, w, h, pixelDescriptor(buf, w))
     }
+
+    /**
+     * Deskryptor z jawnym `stride` = szerokość wgrywanego fragmentu.
+     * Przy stride = 0 Filament zakłada szerokość CAŁEJ tekstury, więc wgranie małego kawałka atlasu
+     * (np. dymka 256 px w atlasie 1024 px) kończyło się BufferOverflowException.
+     */
+    fun pixelDescriptor(buffer: ByteBuffer, regionWidth: Int) = Texture.PixelBufferDescriptor(
+        buffer, Texture.Format.RGBA, Texture.Type.UBYTE, 1, 0, 0, regionWidth, null, null,
+    )
 }
