@@ -16,7 +16,9 @@ android {
         versionName = "2.0"
         ndk {
             // Telefony z Androidem 8+ to praktycznie wyłącznie ARM; bez x86 APK jest o połowę mniejsze.
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            // ./gradlew assembleDebug -Pabi=x86_64 — wersja na emulator (do testów)
+            val abi = project.findProperty("abi") as String?
+            abiFilters += abi?.split(",") ?: listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
