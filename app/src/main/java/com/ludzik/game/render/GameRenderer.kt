@@ -46,6 +46,7 @@ class GameRenderer(private val core: FilamentCore, private val game: GameControl
     val progress get() = if (loadTasks.isEmpty()) 0f else loaded / loadTasks.size.toFloat()
     val currentTask get() = loadTasks.getOrNull(loaded)?.first ?: "Gotowe"
 
+    val loadErrors = ArrayList<String>()
     private val assets = ArrayList<FilamentAsset>()
     private val textures = ArrayList<Texture>()
     private val entities = ArrayList<Int>()
@@ -85,7 +86,9 @@ class GameRenderer(private val core: FilamentCore, private val game: GameControl
         try {
             task.second()
         } catch (e: Exception) {
+            // Pojedynczy brakujący model nie powinien zatrzymać gry.
             Log.e(TAG, "Błąd ładowania: ${task.first}", e)
+            loadErrors += "${task.first}: ${e.message}"
         }
         loaded++
     }
@@ -94,8 +97,7 @@ class GameRenderer(private val core: FilamentCore, private val game: GameControl
 
     private fun setupLighting() {
         // Oświetlenie otoczenia z HDRI wnętrza (odbicia + światło rozproszone).
-        val hdr = core.readAsset("envs/room.hdr")
-        val equirect = HDRLoader.createTexture(engine, hdr)
+        val equirect = if (core.safeMode) null else HDRLoader.createTexture(engine, core.readAsset("envs/room.hdr"))
         if (equirect != null) {
             val ctx = IBLPrefilterContext(engine)
             val toCube = IBLPrefilterContext.EquirectangularToCubemap(ctx)
@@ -128,7 +130,7 @@ class GameRenderer(private val core: FilamentCore, private val game: GameControl
             .intensity(SUN_LUX)
             .direction(d.x, d.y, d.z)
             .sunAngularRadius(1.5f)
-            .castShadows(true)
+            .castShadows(!core.safeMode)
             .shadowOptions(LightManager.ShadowOptions().apply {
                 mapSize = 2048
                 shadowCascades = 1

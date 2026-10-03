@@ -16,6 +16,7 @@ import com.google.android.filament.Viewport
 import com.google.android.filament.android.DisplayHelper
 import com.google.android.filament.android.UiHelper
 import com.google.android.filament.gltfio.AssetLoader
+import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
 import com.google.android.filament.utils.Utils
@@ -26,7 +27,11 @@ import java.nio.ByteOrder
  * Podstawa Filament: silnik, scena, kamera, łańcuch wymiany na SurfaceView i ładowarki glTF.
  * Wszystkie wywołania z wątku głównego (tak jak pętla Choreographera).
  */
-class FilamentCore(private val context: Context, private val surfaceView: SurfaceView) {
+/**
+ * @param safeMode bez SSAO, bloomu, cieni i dynamicznej rozdzielczości — na wypadek problemów
+ *                 ze sterownikiem grafiki.
+ */
+class FilamentCore(private val context: Context, private val surfaceView: SurfaceView, val safeMode: Boolean = false) {
 
     val engine: Engine = Engine.create()
     val renderer: Renderer = engine.createRenderer()
@@ -87,6 +92,13 @@ class FilamentCore(private val context: Context, private val surfaceView: Surfac
     /** Ustawienia „realistyczne, ale na telefon”: AgX, SSAO, delikatny bloom, miękkie cienie. */
     private fun configureQuality() {
         view.antiAliasing = View.AntiAliasing.FXAA
+        view.colorGrading = ColorGrading.Builder()
+            .toneMapper(ToneMapper.Agx())
+            .build(engine)
+        if (safeMode) {
+            view.setShadowingEnabled(false)
+            return
+        }
         view.ambientOcclusionOptions = view.ambientOcclusionOptions.apply {
             enabled = true
             radius = 0.35f
@@ -104,21 +116,23 @@ class FilamentCore(private val context: Context, private val surfaceView: Surfac
             quality = View.QualityLevel.MEDIUM
         }
         view.setShadowType(View.ShadowType.DPCF)
-        view.colorGrading = ColorGrading.Builder()
-            .toneMapper(ToneMapper.Agx())
-            .build(engine)
     }
 
     fun updateProjection() {
         camera.setProjection(FOV_VERTICAL, aspect.toDouble(), 0.03, 40.0, Camera.Fov.VERTICAL)
     }
 
+    /** Czy ostatnia klatka faktycznie trafiła na ekran. */
+    var framesPresented = 0
+        private set
+
     fun render(frameTimeNanos: Long) {
         val sc = swapChain ?: return
-        if (!uiHelper.isReadyToRender) return
+        if (!uiHelper.isReadyToRender || width <= 1 || height <= 1) return
         if (renderer.beginFrame(sc, frameTimeNanos)) {
             renderer.render(view)
             renderer.endFrame()
+            framesPresented++
         }
     }
 
@@ -152,6 +166,7 @@ class FilamentCore(private val context: Context, private val surfaceView: Surfac
 
         init {
             // ładuje filament-jni, gltfio-jni i filament-utils-jni
+            Gltfio.init()
             Utils.init()
         }
     }

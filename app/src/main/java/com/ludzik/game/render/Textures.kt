@@ -26,6 +26,7 @@ object Textures {
             .levels(levels)
             .sampler(Texture.Sampler.SAMPLER_2D)
             .format(Texture.InternalFormat.SRGB8_A8)
+            .usage(if (mipmaps) Texture.Usage.DEFAULT or Texture.Usage.GEN_MIPMAPPABLE else Texture.Usage.DEFAULT)
             .build(engine)
     }
 

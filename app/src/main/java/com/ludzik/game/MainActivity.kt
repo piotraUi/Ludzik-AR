@@ -25,6 +25,8 @@ import com.ludzik.game.audio.SoundManager
 import com.ludzik.game.game.GameController
 import com.ludzik.game.game.GameEvents
 import com.ludzik.game.game.GameHost
+import com.ludzik.game.game.StartupGuard
+import com.ludzik.game.ui.CrashScreen
 import com.ludzik.game.ui.GameScreen
 import com.ludzik.game.ui.LudzikTheme
 import com.ludzik.game.ui.MediaSaver
@@ -36,6 +38,9 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity(), GameEvents {
 
     private var host by mutableStateOf<GameHost?>(null)
+    private var crashReport by mutableStateOf<String?>(null)
+    private var offerSafeMode by mutableStateOf(false)
+    private var safeMode = false
     private var toast by mutableStateOf<String?>(null)
     private var flash by mutableIntStateOf(0)
     private var resumed = false
@@ -52,6 +57,12 @@ class MainActivity : ComponentActivity(), GameEvents {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashReporter.install(this)
+        val startCrashed = StartupGuard.crashedLastTime(this)
+        crashReport = CrashReporter.takeReport(this)
+            ?: if (startCrashed) "Poprzedni start gry nie dokończył ładowania (prawdopodobnie błąd sterownika grafiki).\n" else null
+        offerSafeMode = startCrashed
+        StartupGuard.confirm(this)
         enableEdgeToEdge()
         hideSystemBars()
         sound = SoundManager(this)
@@ -59,7 +70,19 @@ class MainActivity : ComponentActivity(), GameEvents {
         setContent {
             LudzikTheme {
                 val h = host
-                if (h == null) {
+                val report = crashReport
+                if (report != null && h == null) {
+                    CrashScreen(
+                        report = report,
+                        offerSafeMode = offerSafeMode,
+                        onSafeMode = {
+                            crashReport = null
+                            safeMode = true
+                            startGame()
+                        },
+                        onClose = { crashReport = null },
+                    )
+                } else if (h == null) {
                     StartScreen(onStart = ::startGame)
                 } else {
                     GameScreen(
@@ -85,15 +108,35 @@ class MainActivity : ComponentActivity(), GameEvents {
     private fun startGame() {
         if (host != null) return
         val game = GameController().also { it.events = this }
-        val h = GameHost(this, game)
+        StartupGuard.begin(this)
+        val h = try {
+            GameHost(this, game, safeMode, onError = ::onGameError)
+        } catch (t: Throwable) {
+            onGameError(t)
+            return
+        }
         host = h
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (resumed) h.resume()
     }
 
+    /** Błąd w pętli gry: zamiast wywalać aplikację pokazujemy raport i proponujemy tryb bezpieczny. */
+    private fun onGameError(t: Throwable) {
+        CrashReporter.record(this, if (safeMode) "gra (tryb bezpieczny)" else "gra", t)
+        closeGame()
+        StartupGuard.confirm(this)
+        crashReport = CrashReporter.takeReport(this)
+        offerSafeMode = !safeMode
+    }
+
     private fun closeGame() {
-        host?.destroy()
+        val h = host
         host = null
+        try {
+            h?.destroy()
+        } catch (t: Throwable) {
+            CrashReporter.record(this, "zamykanie gry", t)
+        }
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 

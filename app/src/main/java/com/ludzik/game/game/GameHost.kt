@@ -32,9 +32,15 @@ class HudState {
  * Gospodarz gry: SurfaceView z Filament, pętla klatek (Choreographer) i most do Compose.
  * Logika, fizyka i renderowanie działają na wątku głównym, jedno po drugim.
  */
-class GameHost(context: Context, val game: GameController) : Choreographer.FrameCallback {
+class GameHost(
+    private val context: Context,
+    val game: GameController,
+    safeMode: Boolean,
+    /** Wywoływane zamiast wywalenia aplikacji, gdy w pętli gry poleci wyjątek. */
+    private val onError: (Throwable) -> Unit,
+) : Choreographer.FrameCallback {
     val surfaceView = SurfaceView(context)
-    private val core = FilamentCore(context, surfaceView)
+    private val core = FilamentCore(context, surfaceView, safeMode)
     private val renderer = GameRenderer(core, game)
     val hud = HudState()
 
@@ -58,6 +64,15 @@ class GameHost(context: Context, val game: GameController) : Choreographer.Frame
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
         Choreographer.getInstance().postFrameCallback(this)
+        try {
+            frame(frameTimeNanos)
+        } catch (t: Throwable) {
+            pause()
+            onError(t)
+        }
+    }
+
+    private fun frame(frameTimeNanos: Long) {
         if (!renderer.isLoaded) {
             renderer.loadStep()
             hud.loading = renderer.progress
@@ -71,7 +86,14 @@ class GameHost(context: Context, val game: GameController) : Choreographer.Frame
         lastNs = frameTimeNanos
         renderer.update()
         core.render(frameTimeNanos)
+        // Pierwsze klatki pełnej sceny dotarły na ekran — start silnika się udał.
+        if (renderer.isLoaded && core.framesPresented > 30 && !startConfirmed) {
+            startConfirmed = true
+            StartupGuard.confirm(context)
+        }
     }
+
+    private var startConfirmed = false
 
     private fun publishHud() {
         if (hud.doodles != game.world.characters.size) hud.doodles = game.world.characters.size
@@ -106,4 +128,18 @@ class GameHost(context: Context, val game: GameController) : Choreographer.Frame
     companion object {
         const val MAX_DOODLES = World.MAX_CHARACTERS
     }
+}
+
+/**
+ * Znacznik „gra właśnie startuje”. Jeśli przy następnym uruchomieniu wciąż istnieje,
+ * poprzedni start silnika 3D się wywalił — proponujemy tryb bezpieczny.
+ */
+object StartupGuard {
+    private fun file(context: Context) = java.io.File(context.filesDir, "game_starting")
+
+    fun begin(context: Context) = file(context).writeText(System.currentTimeMillis().toString())
+    fun confirm(context: Context) {
+        file(context).delete()
+    }
+    fun crashedLastTime(context: Context) = file(context).exists()
 }
