@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.LudzikAR" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:statusBarColor">@color/cover</item>
+        <item name="android:navigationBarColor">@color/cover</item>
+    </style>
+</resources>
